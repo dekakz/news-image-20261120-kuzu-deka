@@ -6,8 +6,20 @@
 //
 // Local check: mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync } from "node:fs";
+import { copyFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-copyFileSync(new URL("./entry.png", import.meta.url), join(outDir, "entry.png"));
+const src = new URL("./entry.png", import.meta.url);
+const dest = join(outDir, "entry.png");
+copyFileSync(src, dest);
+
+// Verify the copy is complete: source and destination must be byte-identical
+// in size, so a truncated or partial write can never pass silently.
+const srcSize = statSync(src).size;
+const destSize = statSync(dest).size;
+if (srcSize !== destSize) {
+  throw new Error(
+    `entry.png copy incomplete: source ${srcSize} bytes, destination ${destSize} bytes`,
+  );
+}
