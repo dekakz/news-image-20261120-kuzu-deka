@@ -1,25 +1,45 @@
-// news-image-20261120 — entry program (Node 22, standard library only).
-// The entry is the PNG beside this file: a broadsheet front page summing up
-// Friday 20 November 2026 in one image. This program copies it to the
-// output directory the grader provides, with no network and no randomness,
-// so both runs write identical bytes.
-//
-// Local check: mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// The World in One Day — Friday 20 November 2026 (v2)
+// Entrypoint: copies the finished broadsheet (entry.png, rendered by
+// render2.py) into the output directory the harness expects.
+// Usage:  MAKEFUN_OUTPUT_DIR=<dir> node main.ts
+//         (defaults to ./out when the variable is unset)
 
-import { copyFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-const src = new URL("./entry.png", import.meta.url);
-const dest = join(outDir, "entry.png");
-copyFileSync(src, dest);
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SOURCE = join(HERE, "entry.png");
+const OUT_DIR = resolve(process.env.MAKEFUN_OUTPUT_DIR ?? join(HERE, "out"));
+const DEST = join(OUT_DIR, "entry.png");
 
-// Verify the copy is complete: source and destination must be byte-identical
-// in size, so a truncated or partial write can never pass silently.
-const srcSize = statSync(src).size;
-const destSize = statSync(dest).size;
-if (srcSize !== destSize) {
-  throw new Error(
-    `entry.png copy incomplete: source ${srcSize} bytes, destination ${destSize} bytes`,
-  );
+// PNG files start with this 8-byte signature; refuse anything else.
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function sha256(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
+
+function main(): void {
+  if (!existsSync(SOURCE)) {
+    throw new Error(`source image missing: ${SOURCE}`);
+  }
+  const head = readFileSync(SOURCE).subarray(0, 8);
+  if (!head.equals(PNG_MAGIC)) {
+    throw new Error(`source is not a PNG: ${SOURCE}`);
+  }
+  mkdirSync(OUT_DIR, { recursive: true });
+  copyFileSync(SOURCE, DEST);
+  const srcSize = statSync(SOURCE).size;
+  const dstSize = statSync(DEST).size;
+  if (srcSize !== dstSize) {
+    throw new Error(
+      `size mismatch after copy: source ${srcSize} bytes, dest ${dstSize} bytes`,
+    );
+  }
+  console.log(`wrote ${DEST} (${dstSize} bytes)`);
+  console.log(`sha256 ${sha256(DEST)}`);
+}
+
+main();
